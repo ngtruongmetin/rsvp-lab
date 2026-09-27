@@ -1,0 +1,13 @@
+{
+  "name": "rsvp-lab",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "build": "npm run build --workspace frontend",
+    "lint": "npm run lint --workspace frontend",
+    "format": "prettier --write ."
+  },
+  "workspaces": ["frontend", "backend"],
+  "devDependencies": { "concurrently": "^9.1.2", "prettier": "^3.5.3" }
+}

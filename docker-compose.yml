@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      {
+        POSTGRES_DB: rsvp_lab,
+        POSTGRES_USER: postgres,
+        POSTGRES_PASSWORD: postgres,
+      }
+    volumes:
+      [
+        "rsvp_lab_pgdata:/var/lib/postgresql/data",
+        "./backend/sql:/docker-entrypoint-initdb.d:ro",
+      ]
+  backend:
+    build: ./backend
+    environment:
+      {
+        NODE_ENV: production,
+        PORT: 4005,
+        DB_HOST: db,
+        DB_PORT: 5432,
+        DB_NAME: rsvp_lab,
+        DB_USER: postgres,
+        DB_PASSWORD: postgres,
+        SESSION_SECRET: change-this-secret,
+        SECURE_COOKIES: "false",
+      }
+    depends_on: [db]
+    ports: ["4005:4005"]
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["5077:80"]
+volumes:
+  rsvp_lab_pgdata:
