@@ -1,36 +1,47 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      {
-        POSTGRES_DB: rsvp_lab,
-        POSTGRES_USER: postgres,
-        POSTGRES_PASSWORD: postgres,
-      }
+      POSTGRES_DB: rsvp_lab
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
-      [
-        "rsvp_lab_pgdata:/var/lib/postgresql/data",
-        "./backend/sql:/docker-entrypoint-initdb.d:ro",
-      ]
+      - rsvp_lab_pgdata:/var/lib/postgresql/data
+      - ./backend/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rsvp_lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
   backend:
     build: ./backend
+    restart: unless-stopped
     environment:
-      {
-        NODE_ENV: production,
-        PORT: 4005,
-        DB_HOST: db,
-        DB_PORT: 5432,
-        DB_NAME: rsvp_lab,
-        DB_USER: postgres,
-        DB_PASSWORD: postgres,
-        SESSION_SECRET: change-this-secret,
-        SECURE_COOKIES: "false",
-      }
-    depends_on: [db]
-    ports: ["4005:4005"]
+      NODE_ENV: production
+      PORT: 4005
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: rsvp_lab
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      SESSION_SECRET: change-this-to-a-long-random-secret
+      SECURE_COOKIES: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4005:4005"
+
   frontend:
     build: ./frontend
-    depends_on: [backend]
-    ports: ["5077:80"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5077:80"
+
 volumes:
   rsvp_lab_pgdata:
