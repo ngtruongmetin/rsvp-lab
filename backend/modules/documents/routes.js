@@ -38,7 +38,7 @@ router.get("/:id", async (req, res, next) => {
     doc.wpm = doc.level_wpm
     delete doc.level_wpm
     doc.questions = await query(
-      "SELECT id,question_text,option_a,option_b,option_c,option_d FROM questions WHERE document_id=$1 ORDER BY order_index",
+      "SELECT id,question_type,question_text,option_a,option_b,option_c,option_d FROM questions WHERE document_id=$1 ORDER BY order_index",
       [doc.id]
     )
     res.json(doc)

@@ -60,12 +60,17 @@ router.post("/:id/complete", async (req, res, next) => {
     )
     if (!session)
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
-    const status = session.rsvp_level === 1 ? "completed" : "questions"
+    const [{ question_count }] = await query(
+      "SELECT COUNT(*)::int AS question_count FROM questions WHERE document_id=$1",
+      [session.document_id]
+    )
+    const needsQuestions = question_count > 0
+    const status = needsQuestions ? "questions" : "completed"
     const [out] = await query(
-      "UPDATE reading_sessions SET status=$1,reading_duration_ms=$2,completed_at=CASE WHEN $1='completed' THEN NOW() ELSE completed_at END WHERE id=$3 RETURNING *",
+      "UPDATE reading_sessions SET status=$1,reading_duration_ms=$2,completed_at=CASE WHEN $1='completed' THEN NOW() ELSE completed_at END,score=CASE WHEN $1='completed' THEN 100 ELSE score END,passed=CASE WHEN $1='completed' THEN true ELSE passed END WHERE id=$3 RETURNING *",
       [status, +req.body.reading_duration_ms || 0, req.params.id]
     )
-    res.json({ ...out, needs_questions: status === "questions" })
+    res.json({ ...out, needs_questions: needsQuestions })
   } catch (error) {
     next(error)
   }
@@ -78,7 +83,6 @@ router.get("/:id/questions", async (req, res, next) => {
     )
     if (!session)
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
-    if (session.rsvp_level === 1) return res.json([])
     res.json(
       await query(
         "SELECT id,question_type,question_text,option_a,option_b,option_c,option_d,order_index FROM questions WHERE document_id=$1 ORDER BY order_index,id",
@@ -127,14 +131,6 @@ router.post("/:id/submit", async (req, res, next) => {
     )
     if (!session)
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
-    if (session.rsvp_level === 1)
-      return res.json({
-        score: 100,
-        correct: 0,
-        total: 0,
-        passed: true,
-        needs_questions: false,
-      })
     const questions = await query(
       "SELECT id FROM questions WHERE document_id=$1 ORDER BY order_index,id",
       [session.document_id]
@@ -156,8 +152,9 @@ router.post("/:id/submit", async (req, res, next) => {
       "SELECT COALESCE(SUM(a.is_correct::int),0)::int AS correct FROM answers a JOIN reading_sessions s ON s.id=a.session_id WHERE s.user_id=$1 AND s.rsvp_level=$2",
       [req.session.user.id, session.rsvp_level]
     )
-    const threshold = setting?.promotion_correct_answers
-    const next_unlocked = threshold == null || aggregate.correct >= threshold
+    const threshold =
+      session.rsvp_level < 4 ? setting?.promotion_correct_answers : null
+    const next_unlocked = threshold != null && aggregate.correct >= threshold
     const [result] = await query(
       "UPDATE reading_sessions SET status='completed',completed_at=NOW(),score=$1,passed=$2 WHERE id=$3 RETURNING *",
       [score, true, session.id]

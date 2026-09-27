@@ -68,7 +68,7 @@ async function start() {
       "INSERT INTO questions(document_id,question_type,question_text,option_a,option_b,option_c,option_d,correct_option,order_index) SELECT d.id,'multiple_choice','Ý chính của văn bản là gì?','Rèn khả năng đọc và suy nghĩ','Học thuộc mọi câu chữ','Đọc càng nhanh càng tốt','Không cần ghi nhớ','a',1 FROM documents d WHERE d.rsvp_level>1 AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.document_id=d.id)"
     )
     await query(
-      "INSERT INTO questions(document_id,question_type,question_text,option_a,option_b,option_c,option_d,correct_option,order_index) SELECT d.id,'true_false','Văn bản khuyến khích người đọc suy nghĩ lại bằng lời của mình.','Đúng','Sai','','','true',2 FROM documents d WHERE d.rsvp_level>1 AND (SELECT COUNT(*) FROM questions q WHERE q.document_id=d.id)=1"
+      "INSERT INTO questions(document_id,question_type,question_text,option_a,option_b,option_c,option_d,correct_option,order_index) SELECT d.id,'true_false','Văn bản khuyến khích người đọc suy nghĩ lại bằng lời của mình.','Đúng','Sai','','','true',2 FROM documents d WHERE (SELECT COUNT(*) FROM questions q WHERE q.document_id=d.id)=0"
     )
     await query(
       "UPDATE users SET password_hash=$1, role='admin' WHERE username='admin'",
