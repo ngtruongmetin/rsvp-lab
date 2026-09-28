@@ -265,11 +265,10 @@ function Reader() {
           api(`/sessions/${id}/complete`, {
             method: "POST",
             body: JSON.stringify({}),
-          }).then((x) =>
-            nav(
-              x.needs_questions ? `/read/${id}/questions` : `/read/${id}/result`
-            )
-          )
+          }).then((x) => {
+            if (!x.needs_questions) sessionStorage.setItem("result", JSON.stringify({ score: 100, correct: 0, total: 0, passed: true, threshold: null, next_unlocked: false }))
+            nav(x.needs_questions ? `/read/${id}/questions` : `/read/${id}/result`)
+          })
         else {
           setI(i + 1)
           api(`/sessions/${id}/progress`, {
@@ -389,7 +388,7 @@ function Result() {
         </span>
       </div>
       <p>
-        {r.threshold
+        {r.total === 0 ? "Văn bản này không có câu hỏi." : r.threshold
           ? `Tổng cấp: ${r.aggregate_correct} / ${r.threshold} câu đúng.`
           : "Cấp 1 không yêu cầu câu hỏi."}
       </p>
