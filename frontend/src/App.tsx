@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom"
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom"
 import { api } from "./lib/api"
 function Nav({ user, logout }: any) {
   return (
@@ -27,6 +27,22 @@ function Nav({ user, logout }: any) {
       </nav>
     </header>
   )
+}
+function PageTitle() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const title = pathname === "/" ? "RSVP Lab" :
+      pathname === "/login" ? "Đăng nhập | RSVP Lab" :
+      pathname === "/register" ? "Đăng ký | RSVP Lab" :
+      pathname === "/dashboard" ? "Dashboard | RSVP Lab" :
+      pathname === "/admin" ? "Quản trị | RSVP Lab" :
+      pathname.includes("/questions") ? "Câu hỏi | RSVP Lab" :
+      pathname.includes("/result") ? "Kết quả | RSVP Lab" :
+      pathname.includes("/setup") ? "Cài đặt đọc | RSVP Lab" :
+      pathname.startsWith("/read/") ? "Đang đọc | RSVP Lab" : "RSVP Lab"
+    document.title = title
+  }, [pathname])
+  return null
 }
 function Landing() {
   return (
@@ -142,10 +158,13 @@ function Auth({ mode, onAuth }: any) {
     </main>
   )
 }
+function PublicRoute({ children, user }: any) {
+  return user ? <Redirect to="/dashboard" /> : children
+}
 function Dashboard({ user }: any) {
   const [d, setD] = useState<any[]>([])
   useEffect(() => {
-    api("/documents").then(setD)
+    api("/documents").then(setD).catch(() => setD([]))
   }, [])
   return (
     <main className="dash">
@@ -706,17 +725,18 @@ export default function App() {
     )
   return (
     <>
+      <PageTitle />
       <Nav user={user} logout={logout} />
       {ready && (
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<PublicRoute user={user}><Landing /></PublicRoute>} />
           <Route
             path="/login"
-            element={<Auth mode="login" onAuth={setUser} />}
+            element={<PublicRoute user={user}><Auth mode="login" onAuth={setUser} /></PublicRoute>}
           />
           <Route
             path="/register"
-            element={<Auth mode="register" onAuth={setUser} />}
+            element={<PublicRoute user={user}><Auth mode="register" onAuth={setUser} /></PublicRoute>}
           />
           <Route path="/dashboard" element={guard(<Dashboard user={user} />)} />
           <Route path="/read/:id/setup" element={guard(<Setup />)} />

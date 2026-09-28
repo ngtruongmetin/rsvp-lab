@@ -32,6 +32,7 @@ router.get("/documents", async (_req, res, next) => {
 })
 router.post("/documents", async (req, res, next) => {
   try {
+    if (!Number.isInteger(+req.body.rsvp_level) || +req.body.rsvp_level < 1 || +req.body.rsvp_level > 4) return res.status(400).json({ error: "rsvp_level must be 1-4" })
     const [doc] = await query(
       "INSERT INTO documents(title,description,content,rsvp_level,wpm,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
       [
@@ -50,6 +51,7 @@ router.post("/documents", async (req, res, next) => {
 })
 router.patch("/documents/:id", async (req, res, next) => {
   try {
+    if (req.body.rsvp_level != null && (!Number.isInteger(+req.body.rsvp_level) || +req.body.rsvp_level < 1 || +req.body.rsvp_level > 4)) return res.status(400).json({ error: "rsvp_level must be 1-4" })
     const [doc] = await query(
       "UPDATE documents SET title=COALESCE($1,title),description=COALESCE($2,description),content=COALESCE($3,content),rsvp_level=COALESCE($4,rsvp_level),wpm=COALESCE($5,wpm),status=COALESCE($6,status),updated_at=NOW() WHERE id=$7 RETURNING *",
       [

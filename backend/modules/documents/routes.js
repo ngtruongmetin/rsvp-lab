@@ -2,24 +2,22 @@ const express = require("express")
 const { query } = require("../../lib/database")
 const { createChunks } = require("../../lib/rsvp")
 const { requireAuth } = require("../../middleware/auth")
+const { getLevelProgress, canAccessDocument } = require("../../lib/access")
 const router = express.Router()
 router.use(requireAuth)
 router.get("/", async (req, res, next) => {
   try {
     const docs = await query(
-      "SELECT d.*,l.wpm,EXISTS(SELECT 1 FROM reading_sessions x WHERE x.document_id=d.id AND x.user_id=$1 AND x.passed) completed,EXISTS(SELECT 1 FROM reading_sessions x JOIN documents prev ON prev.id=x.document_id WHERE x.user_id=$1 AND x.passed AND prev.rsvp_level=d.rsvp_level-1) previous_completed,COALESCE((SELECT SUM(a.is_correct::int) FROM answers a JOIN reading_sessions s ON s.id=a.session_id WHERE s.user_id=$1 AND s.rsvp_level=d.rsvp_level),0)::int aggregate_correct,(SELECT promotion_correct_answers FROM level_settings WHERE level=d.rsvp_level-1) threshold FROM documents d JOIN level_settings l ON l.level=d.rsvp_level WHERE d.status='published' ORDER BY d.rsvp_level,d.id",
+      "SELECT d.*,l.wpm,EXISTS(SELECT 1 FROM reading_sessions x WHERE x.document_id=d.id AND x.user_id=$1 AND x.status='completed' AND x.passed) completed FROM documents d JOIN level_settings l ON l.level=d.rsvp_level WHERE d.status='published' ORDER BY d.rsvp_level,d.id",
       [req.session.user.id]
     )
     res.json(
-      docs.map((doc) => ({
+      await Promise.all(docs.map(async (doc) => {
+        const progress = Number(doc.rsvp_level) === 1 ? { correct: 0, threshold: null } : await getLevelProgress(req.session.user.id, Number(doc.rsvp_level) - 1)
+        return {
         ...doc,
-        unlocked:
-          Number(doc.rsvp_level) === 1 ||
-          req.session.user.role === "admin" ||
-          (doc.rsvp_level === 2 && doc.previous_completed) ||
-          (doc.rsvp_level > 2 &&
-            doc.aggregate_correct >= Number(doc.threshold || 0)),
-      }))
+        progress_correct: progress.correct, progress_threshold: progress.threshold, current_level: Number(doc.rsvp_level), unlocked: await canAccessDocument(req.session.user.id, req.session.user.role, doc)
+      }}))
     )
   } catch (error) {
     next(error)
@@ -32,7 +30,7 @@ router.get("/:id", async (req, res, next) => {
       [req.params.id]
     )
     if (!doc) return res.status(404).json({ error: "Document not found" })
-    if (doc.rsvp_level > 1 && req.session.user.role !== "admin")
+    if (!(await canAccessDocument(req.session.user.id, req.session.user.role, doc)))
       return res.status(403).json({ error: "Document is locked" })
     doc.chunks = createChunks(doc.content, 1)
     doc.wpm = doc.level_wpm

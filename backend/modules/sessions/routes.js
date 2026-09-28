@@ -2,16 +2,18 @@ const express = require("express")
 const { query } = require("../../lib/database")
 const { createChunks } = require("../../lib/rsvp")
 const { requireAuth } = require("../../middleware/auth")
+const { canAccessDocument } = require("../../lib/access")
 const router = express.Router()
 router.use(requireAuth)
 
 router.post("/", async (req, res, next) => {
   try {
     const [doc] = await query(
-      "SELECT d.*,l.wpm AS level_wpm FROM documents d JOIN level_settings l ON l.level=COALESCE(d.rsvp_level,d.required_level) WHERE d.id=$1",
+      "SELECT d.*,l.wpm AS level_wpm FROM documents d JOIN level_settings l ON l.level=d.rsvp_level WHERE d.id=$1",
       [req.body.document_id]
     )
     if (!doc) return res.status(404).json({ error: "Không tìm thấy văn bản" })
+    if (!(await canAccessDocument(req.session.user.id, req.session.user.role, doc))) return res.status(403).json({ error: "Document is locked" })
     const [session] = await query(
       "INSERT INTO reading_sessions(user_id,document_id,rsvp_level,wpm) VALUES($1,$2,$3,$4) RETURNING *",
       [
@@ -32,7 +34,7 @@ router.get("/:id", async (req, res, next) => {
       "SELECT s.*,d.title,d.content,d.rsvp_level AS document_rsvp_level FROM reading_sessions s JOIN documents d ON d.id=s.document_id WHERE s.id=$1 AND s.user_id=$2",
       [req.params.id, req.session.user.id]
     )
-    if (!session)
+    if (!session || !(await canAccessDocument(req.session.user.id, req.session.user.role, { rsvp_level: session.document_rsvp_level })))
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
     session.chunks = createChunks(session.content, session.rsvp_level)
     delete session.content
@@ -58,7 +60,7 @@ router.post("/:id/complete", async (req, res, next) => {
       "SELECT s.*,d.rsvp_level FROM reading_sessions s JOIN documents d ON d.id=s.document_id WHERE s.id=$1 AND s.user_id=$2",
       [req.params.id, req.session.user.id]
     )
-    if (!session)
+    if (!session || !(await canAccessDocument(req.session.user.id, req.session.user.role, session)))
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
     const [{ question_count }] = await query(
       "SELECT COUNT(*)::int AS question_count FROM questions WHERE document_id=$1",
@@ -81,7 +83,7 @@ router.get("/:id/questions", async (req, res, next) => {
       "SELECT * FROM reading_sessions WHERE id=$1 AND user_id=$2",
       [req.params.id, req.session.user.id]
     )
-    if (!session)
+    if (!session || !(await canAccessDocument(req.session.user.id, req.session.user.role, session)))
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
     res.json(
       await query(
@@ -99,7 +101,7 @@ router.post("/:id/answers", async (req, res, next) => {
       "SELECT * FROM reading_sessions WHERE id=$1 AND user_id=$2 AND status='questions'",
       [req.params.id, req.session.user.id]
     )
-    if (!session)
+    if (!session || !(await canAccessDocument(req.session.user.id, req.session.user.role, session)))
       return res.status(404).json({ error: "Buổi đọc không hợp lệ" })
     const [question] = await query(
       "SELECT * FROM questions WHERE id=$1 AND document_id=$2",
@@ -129,7 +131,7 @@ router.post("/:id/submit", async (req, res, next) => {
       "SELECT * FROM reading_sessions WHERE id=$1 AND user_id=$2",
       [req.params.id, req.session.user.id]
     )
-    if (!session)
+    if (!session || !(await canAccessDocument(req.session.user.id, req.session.user.role, session)))
       return res.status(404).json({ error: "Không tìm thấy buổi đọc" })
     const questions = await query(
       "SELECT id FROM questions WHERE document_id=$1 ORDER BY order_index,id",
@@ -154,7 +156,8 @@ router.post("/:id/submit", async (req, res, next) => {
     )
     const threshold =
       session.rsvp_level < 4 ? setting?.promotion_correct_answers : null
-    const next_unlocked = threshold != null && aggregate.correct >= threshold
+    const aggregateCorrect = Number(aggregate.correct) + correct
+    const next_unlocked = threshold != null && aggregateCorrect >= Number(threshold)
     const [result] = await query(
       "UPDATE reading_sessions SET status='completed',completed_at=NOW(),score=$1,passed=$2 WHERE id=$3 RETURNING *",
       [score, true, session.id]
@@ -164,7 +167,7 @@ router.post("/:id/submit", async (req, res, next) => {
       correct,
       total: questions.length,
       passed: true,
-      aggregate_correct: aggregate.correct,
+      aggregate_correct: aggregateCorrect,
       threshold,
       next_unlocked,
       session: result,

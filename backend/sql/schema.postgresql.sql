@@ -4,6 +4,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS rsvp_level INT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS wpm INT NOT NULL DEFAULT 300;
 UPDATE documents SET rsvp_level=required_level WHERE rsvp_level IS NULL;
 ALTER TABLE documents ALTER COLUMN rsvp_level SET DEFAULT 1;
+UPDATE documents SET rsvp_level=1 WHERE rsvp_level IS NULL OR rsvp_level < 1 OR rsvp_level > 4;
 CREATE TABLE IF NOT EXISTS questions (id BIGSERIAL PRIMARY KEY, document_id BIGINT REFERENCES documents(id) ON DELETE CASCADE, question_text TEXT NOT NULL, option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL, correct_option CHAR(1) NOT NULL, order_index INT NOT NULL DEFAULT 0);
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_type TEXT NOT NULL DEFAULT 'multiple_choice';
 ALTER TABLE questions ALTER COLUMN correct_option TYPE TEXT;
