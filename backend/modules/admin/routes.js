@@ -1,5 +1,6 @@
 const express = require("express")
 const { query } = require("../../lib/database")
+const { pool } = require("../../config/database")
 const { requireAuth, requireAdmin } = require("../../middleware/auth")
 const router = express.Router()
 router.use(requireAuth, requireAdmin)
@@ -25,7 +26,11 @@ router.get("/analytics", async (_req, res, next) => {
 })
 router.get("/documents", async (_req, res, next) => {
   try {
-    res.json(await query("SELECT * FROM documents ORDER BY rsvp_level,id"))
+    res.json(
+      await query(
+        "SELECT d.*,COUNT(DISTINCT q.id)::int AS question_count,COUNT(DISTINCT s.id)::int AS session_count FROM documents d LEFT JOIN questions q ON q.document_id=d.id LEFT JOIN reading_sessions s ON s.document_id=d.id GROUP BY d.id ORDER BY d.rsvp_level,d.id"
+      )
+    )
   } catch (error) {
     next(error)
   }
@@ -108,6 +113,40 @@ router.post("/documents/:id/questions", async (req, res, next) => {
     res.status(201).json(question)
   } catch (error) {
     next(error)
+  }
+})
+router.post("/documents/:id/questions/reorder", async (req, res, next) => {
+  const client = await pool.connect()
+  try {
+    const questionIds = Array.isArray(req.body.question_ids)
+      ? req.body.question_ids.map(Number)
+      : []
+    if (!questionIds.length || questionIds.some(id => !Number.isInteger(id)))
+      return res.status(400).json({ error: "Cần danh sách câu hỏi hợp lệ" })
+    await client.query("BEGIN")
+    const { rows } = await client.query(
+      "SELECT id FROM questions WHERE document_id=$1 ORDER BY order_index,id",
+      [req.params.id]
+    )
+    if (rows.length !== questionIds.length || rows.some(row => !questionIds.includes(Number(row.id)))) {
+      await client.query("ROLLBACK")
+      return res.status(400).json({ error: "Danh sách câu hỏi không khớp với văn bản" })
+    }
+    for (const [index, questionId] of questionIds.entries()) {
+      await client.query(
+        "UPDATE questions SET order_index=$1 WHERE id=$2 AND document_id=$3",
+        [index + 1, questionId, req.params.id]
+      )
+    }
+    await client.query("COMMIT")
+    res.json(
+      (await client.query("SELECT * FROM questions WHERE document_id=$1 ORDER BY order_index,id", [req.params.id])).rows
+    )
+  } catch (error) {
+    await client.query("ROLLBACK")
+    next(error)
+  } finally {
+    client.release()
   }
 })
 router.patch("/questions/:id", async (req, res, next) => {
